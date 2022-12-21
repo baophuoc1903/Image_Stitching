@@ -1,3 +1,5 @@
-numpy
-matplotlib
-opencv-python==4.5.3
+numpy~=1.23.5
+matplotlib~=3.6.2
+opencv-python~=4.5.3.56
+tqdm~=4.64.1
+imutils~=0.5.4

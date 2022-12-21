@@ -2,9 +2,7 @@ import numpy as np
 import cv2
 from functools import cmp_to_key
 import logging
-import numba
 from tqdm import tqdm
-
 
 ####################
 # Global variables #
@@ -39,7 +37,6 @@ def computeKeypointsAndDescriptors(image, sigma=1.6, num_intervals=3, assumed_bl
 #########################
 # Image pyramid related #
 #########################
-@numba.jit
 def generateBaseImage(image, sigma, assumed_blur):
     """Generate base image from input image by upsampling by 2 in both directions and blurring
     """
@@ -47,17 +44,15 @@ def generateBaseImage(image, sigma, assumed_blur):
     image = cv2.resize(image, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
     sigma_diff = np.sqrt(max((sigma ** 2) - ((2 * assumed_blur) ** 2), 0.01))
     return cv2.GaussianBlur(image, (0, 0), sigmaX=sigma_diff,
-                        sigmaY=sigma_diff)  # the image blur is now sigma instead of assumed_blur
+                            sigmaY=sigma_diff)  # the image blur is now sigma instead of assumed_blur
 
 
-@numba.jit
 def computeNumberOfOctaves(image_shape):
     """Compute number of octaves in image pyramid as function of base image shape (OpenCV default)
     """
     return int(round(np.log(min(image_shape)) / np.log(2) - 1))
 
 
-@numba.jit
 def generateGaussianKernels(sigma, num_intervals):
     """Generate list of gaussian kernels at which to blur the input image. Default values of sigma, intervals, and octaves follow section 3 of Lowe's paper.
     """
@@ -75,7 +70,6 @@ def generateGaussianKernels(sigma, num_intervals):
     return gaussian_kernels
 
 
-@numba.jit
 def generateGaussianImages(image, num_octaves, gaussian_kernels):
     """Generate scale-space pyramid of Gaussian images
     """
@@ -91,11 +85,10 @@ def generateGaussianImages(image, num_octaves, gaussian_kernels):
         gaussian_images.append(gaussian_images_in_octave)
         octave_base = gaussian_images_in_octave[-3]
         image = cv2.resize(octave_base, (int(octave_base.shape[1] / 2), int(octave_base.shape[0] / 2)),
-                       interpolation=cv2.INTER_NEAREST)
+                           interpolation=cv2.INTER_NEAREST)
     return np.array(gaussian_images, dtype=object)
 
 
-@numba.jit
 def generateDoGImages(gaussian_images):
     """Generate Difference-of-Gaussians image pyramid
     """
@@ -106,7 +99,7 @@ def generateDoGImages(gaussian_images):
         dog_images_in_octave = []
         for first_image, second_image in zip(gaussian_images_in_octave, gaussian_images_in_octave[1:]):
             dog_images_in_octave.append(np.subtract(second_image,
-                                                 first_image))  # ordinary subtraction will not work because the images are unsigned integers
+                                                    first_image))  # ordinary subtraction will not work because the images are unsigned integers
         dog_images.append(dog_images_in_octave)
     return np.array(dog_images, dtype=object)
 
@@ -114,7 +107,7 @@ def generateDoGImages(gaussian_images):
 ###############################
 # Scale-space extrema related #
 ###############################
-@numba.jit
+
 def findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, image_border_width,
                           contrast_threshold=0.04):
     """Find pixel positions of all scale-space extrema in the image pyramid
@@ -146,30 +139,28 @@ def findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, ima
     return keypoints
 
 
-@numba.jit
 def isPixelAnExtremum(first_subimage, second_subimage, third_subimage, threshold):
     """Return True if the center element of the 3x3x3 input array is strictly greater than or less than all its neighbors, False otherwise
     """
     center_pixel_value = second_subimage[1, 1]
     if abs(center_pixel_value) > threshold:
         if center_pixel_value > 0:
-            return all(center_pixel_value >= first_subimage) and \
-                   all(center_pixel_value >= third_subimage) and \
-                   all(center_pixel_value >= second_subimage[0, :]) and \
-                   all(center_pixel_value >= second_subimage[2, :]) and \
+            return np.alltrue(center_pixel_value >= first_subimage) and \
+                   np.alltrue(center_pixel_value >= third_subimage) and \
+                   np.alltrue(center_pixel_value >= second_subimage[0, :]) and \
+                   np.alltrue(center_pixel_value >= second_subimage[2, :]) and \
                    center_pixel_value >= second_subimage[1, 0] and \
                    center_pixel_value >= second_subimage[1, 2]
         elif center_pixel_value < 0:
-            return all(center_pixel_value <= first_subimage) and \
-                   all(center_pixel_value <= third_subimage) and \
-                   all(center_pixel_value <= second_subimage[0, :]) and \
-                   all(center_pixel_value <= second_subimage[2, :]) and \
+            return np.alltrue(center_pixel_value <= first_subimage) and \
+                   np.alltrue(center_pixel_value <= third_subimage) and \
+                   np.alltrue(center_pixel_value <= second_subimage[0, :]) and \
+                   np.alltrue(center_pixel_value <= second_subimage[2, :]) and \
                    center_pixel_value <= second_subimage[1, 0] and \
                    center_pixel_value <= second_subimage[1, 2]
     return False
 
 
-@numba.jit
 def localizeExtremumViaQuadraticFit(i, j, image_index, octave_index, num_intervals, dog_images_in_octave, sigma,
                                     contrast_threshold, image_border_width, eigenvalue_ratio=10,
                                     num_attempts_until_convergence=5):
@@ -182,8 +173,8 @@ def localizeExtremumViaQuadraticFit(i, j, image_index, octave_index, num_interva
         # need to convert from uint8 to float32 to compute derivatives and need to rescale pixel values to [0, 1] to apply Lowe's thresholds
         first_image, second_image, third_image = dog_images_in_octave[image_index - 1:image_index + 2]
         pixel_cube = np.stack([first_image[i - 1:i + 2, j - 1:j + 2],
-                            second_image[i - 1:i + 2, j - 1:j + 2],
-                            third_image[i - 1:i + 2, j - 1:j + 2]]).astype('float32') / 255.
+                               second_image[i - 1:i + 2, j - 1:j + 2],
+                               third_image[i - 1:i + 2, j - 1:j + 2]]).astype('float32') / 255.
         gradient = computeGradientAtCenterPixel(pixel_cube)
         hessian = computeHessianAtCenterPixel(pixel_cube)
         extremum_update = -np.linalg.lstsq(hessian, gradient, rcond=None)[0]
@@ -213,17 +204,16 @@ def localizeExtremumViaQuadraticFit(i, j, image_index, octave_index, num_interva
             # Contrast check passed -- construct and return OpenCV KeyPoint object
             keypoint = cv2.KeyPoint()
             keypoint.pt = (
-            (j + extremum_update[0]) * (2 ** octave_index), (i + extremum_update[1]) * (2 ** octave_index))
+                (j + extremum_update[0]) * (2 ** octave_index), (i + extremum_update[1]) * (2 ** octave_index))
             keypoint.octave = octave_index + image_index * (2 ** 8) + int(round((extremum_update[2] + 0.5) * 255)) * (
-                        2 ** 16)
+                    2 ** 16)
             keypoint.size = sigma * (2 ** ((image_index + extremum_update[2]) / np.float32(num_intervals))) * (
-                        2 ** (octave_index + 1))  # octave_index + 1 because the input image was doubled
+                    2 ** (octave_index + 1))  # octave_index + 1 because the input image was doubled
             keypoint.response = abs(functionValueAtUpdatedExtremum)
             return keypoint, image_index
     return None
 
 
-@numba.jit
 def computeGradientAtCenterPixel(pixel_array):
     """Approximate gradient at center pixel [1, 1, 1] of 3x3x3 array using central difference formula of order O(h^2), where h is the step size
     """
@@ -236,7 +226,6 @@ def computeGradientAtCenterPixel(pixel_array):
     return np.array([dx, dy, ds])
 
 
-@numba.jit
 def computeHessianAtCenterPixel(pixel_array):
     """Approximate Hessian at center pixel [1, 1, 1] of 3x3x3 array using central difference formula of order O(h^2), where h is the step size
     """
@@ -253,14 +242,14 @@ def computeHessianAtCenterPixel(pixel_array):
     dxs = 0.25 * (pixel_array[2, 1, 2] - pixel_array[2, 1, 0] - pixel_array[0, 1, 2] + pixel_array[0, 1, 0])
     dys = 0.25 * (pixel_array[2, 2, 1] - pixel_array[2, 0, 1] - pixel_array[0, 2, 1] + pixel_array[0, 0, 1])
     return np.array([[dxx, dxy, dxs],
-                  [dxy, dyy, dys],
-                  [dxs, dys, dss]])
+                     [dxy, dyy, dys],
+                     [dxs, dys, dss]])
 
 
 #########################
 # Keypoint orientations #
 #########################
-@numba.jit
+
 def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, radius_factor=3, num_bins=36,
                                      peak_ratio=0.8, scale_factor=1.5):
     """Compute orientations for each keypoint
@@ -287,7 +276,7 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
                     gradient_magnitude = np.sqrt(dx * dx + dy * dy)
                     gradient_orientation = np.rad2deg(np.arctan2(dy, dx))
                     weight = np.exp(weight_factor * (
-                                i ** 2 + j ** 2))  # constant in front of exponential can be dropped because we will find peaks later
+                            i ** 2 + j ** 2))  # constant in front of exponential can be dropped because we will find peaks later
                     histogram_index = int(round(gradient_orientation * num_bins / 360.))
                     raw_histogram[histogram_index % num_bins] += weight * gradient_magnitude
 
@@ -296,7 +285,8 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
                                raw_histogram[n - 2] + raw_histogram[(n + 2) % num_bins]) / 16.
     orientation_max = max(smooth_histogram)
     orientation_peaks = \
-    np.where(np.logical_and(smooth_histogram > np.roll(smooth_histogram, 1), smooth_histogram > np.roll(smooth_histogram, -1)))[0]
+        np.where(np.logical_and(smooth_histogram > np.roll(smooth_histogram, 1),
+                                smooth_histogram > np.roll(smooth_histogram, -1)))[0]
     for peak_index in orientation_peaks:
         peak_value = smooth_histogram[peak_index]
         if peak_value >= peak_ratio * orientation_max:
@@ -305,7 +295,7 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
             left_value = smooth_histogram[(peak_index - 1) % num_bins]
             right_value = smooth_histogram[(peak_index + 1) % num_bins]
             interpolated_peak_index = (peak_index + 0.5 * (left_value - right_value) / (
-                        left_value - 2 * peak_value + right_value)) % num_bins
+                    left_value - 2 * peak_value + right_value)) % num_bins
             orientation = 360. - interpolated_peak_index * 360. / num_bins
             if abs(orientation - 360.) < float_tolerance:
                 orientation = 0
@@ -317,7 +307,7 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
 ##############################
 # Duplicate keypoint removal #
 ##############################
-@numba.jit
+
 def compareKeypoints(keypoint1, keypoint2):
     """Return True if keypoint1 is less than keypoint2
     """
@@ -336,7 +326,6 @@ def compareKeypoints(keypoint1, keypoint2):
     return keypoint2.class_id - keypoint1.class_id
 
 
-@numba.jit
 def removeDuplicateKeypoints(keypoints):
     """Sort keypoints and remove duplicate keypoints
     """
@@ -359,7 +348,7 @@ def removeDuplicateKeypoints(keypoints):
 #############################
 # Keypoint scale conversion #
 #############################
-@numba.jit
+
 def convertKeypointsToInputImageSize(keypoints):
     """Convert keypoint point, size, and octave to input image size
     """
@@ -375,7 +364,7 @@ def convertKeypointsToInputImageSize(keypoints):
 #########################
 # Descriptor generation #
 #########################
-# @numba.jit
+# 
 def unpackOctave(keypoint):
     """Compute octave, layer, and scale from a keypoint
     """
@@ -387,7 +376,7 @@ def unpackOctave(keypoint):
     return octave, layer, scale
 
 
-# @numba.jit
+# 
 def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, scale_multiplier=3,
                         descriptor_max_value=0.2):
     """Generate descriptors for each keypoint
@@ -399,7 +388,7 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
         octave, layer, scale = unpackOctave(keypoint)
         gaussian_image = gaussian_images[octave + 1, layer]
         num_rows, num_cols = gaussian_image.shape
-        point = round(scale * np.array(keypoint.pt)).astype('int')
+        point = np.around(scale * np.array(keypoint.pt)).astype('int')
         bins_per_degree = num_bins / 360.
         angle = 360. - keypoint.angle
         cos_angle = np.cos(np.deg2rad(angle))
@@ -410,12 +399,13 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
         magnitude_list = []
         orientation_bin_list = []
         histogram_tensor = np.zeros((window_width + 2, window_width + 2,
-                                  num_bins))  # first two dimensions are increased by 2 to account for border effects
+                                     num_bins))  # first two dimensions are increased by 2 to account for border effects
 
         # Descriptor window size (described by half_width) follows OpenCV convention
         hist_width = scale_multiplier * 0.5 * scale * keypoint.size
         half_width = int(
-            round(hist_width * np.sqrt(2) * (window_width + 1) * 0.5))  # sqrt(2) corresponds to diagonal length of a pixel
+            round(hist_width * np.sqrt(2) * (
+                        window_width + 1) * 0.5))  # sqrt(2) corresponds to diagonal length of a pixel
         half_width = int(min(half_width, np.sqrt(num_rows ** 2 + num_cols ** 2)))  # ensure half_width lies within image
 
         for row in range(-half_width, half_width + 1):
@@ -443,7 +433,8 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
             # Smoothing via trilinear interpolation
             # Notations follows https://en.wikipedia.org/wiki/Trilinear_interpolation
             # Note that we are really doing the inverse of trilinear interpolation here (we take the center value of the cube and distribute it among its eight neighbors)
-            row_bin_floor, col_bin_floor, orientation_bin_floor = np.floor([row_bin, col_bin, orientation_bin]).astype(int)
+            row_bin_floor, col_bin_floor, orientation_bin_floor = np.floor([row_bin, col_bin, orientation_bin]).astype(
+                int)
             row_fraction, col_fraction, orientation_fraction = row_bin - row_bin_floor, col_bin - col_bin_floor, orientation_bin - orientation_bin_floor
             if orientation_bin_floor < 0:
                 orientation_bin_floor += num_bins
@@ -480,7 +471,7 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
         descriptor_vector[descriptor_vector > threshold] = threshold
         descriptor_vector /= max(np.linalg.norm(descriptor_vector), float_tolerance)
         # Multiply by 512, round, and saturate between 0 and 255 to convert from float32 to unsigned char (OpenCV convention)
-        descriptor_vector = round(512 * descriptor_vector)
+        descriptor_vector = np.around(512 * descriptor_vector)
         descriptor_vector[descriptor_vector < 0] = 0
         descriptor_vector[descriptor_vector > 255] = 255
         descriptors.append(descriptor_vector)
