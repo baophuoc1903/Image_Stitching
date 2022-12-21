@@ -11,8 +11,17 @@
   - Step 3: Warping and blending 2 part into panorama image
 
 **How to run:**
+
+To perform stitching image:
 ```
 python main.py
 ```
+
+To test SIFT (Using to match features between a pair of image):
+```
+python sift_test.py
+```
+
+
   
 

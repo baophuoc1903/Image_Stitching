@@ -2,16 +2,13 @@ import numpy as np
 import cv2
 import sift
 from matplotlib import pyplot as plt
-import logging
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
 
 
 def matches_two_image(MIN_MATCH_COUNT=10, path=__file__):
     path = Path(path).parents[0].joinpath("Images")
-    img1 = cv2.imread(str(path.joinpath('foto1.jpeg')), 0)  # queryImage
-    img2 = cv2.imread(str(path.joinpath('foto0.jpeg')), 0)  # trainImage
+    img1 = cv2.imread(str(path.joinpath('001.jpg')), 0)  # queryImage
+    img2 = cv2.imread(str(path.joinpath('002.jpg')), 0)  # trainImage
 
     # Compute SIFT keypoints and descriptors
     kp1, des1 = sift.computeKeypointsAndDescriptors(img1)
